@@ -82,7 +82,7 @@ for x_ini, x_fim, h_min in restricoes_altura:
 # [posição horizontal desejada, altura da torre]
 
 torres_desejadas = np.array([
-    [0.0,   20.0],
+    [110.0,   20.0],
     [290.0, 20.0]
 ])
 
@@ -127,36 +127,125 @@ torres = np.array(torres)
 # ----------------------------------------------------------------
 # Cada elemento de T0_vaos corresponde a um vão entre torres consecutivas.
 # Para n torres, devem existir n - 1 valores de T0.
-T0_vaos = np.array(
-    [0.96 * Tmax]
-                   )
+
+T0_vaos = np.array([
+    0.96 * Tmax
+])
 
 if len(T0_vaos) != len(torres) - 1:
-    raise ValueError("O número de valores em T0_vaos deve ser igual a len(torres) - 1.")
+    raise ValueError(
+        "O número de valores em T0_vaos deve ser igual a len(torres) - 1."
+    )
 
-# ----------------------------------
+# --------------------------------------------------------------------
 # 8. Equação não linear para encontrar x0
-# ----------------------------------
+# --------------------------------------------------------
 def equacao_x0(x0_array, xt1, xt2, yt1, yt2, T0, mu_s):
     x0 = x0_array[0]
+
     termo_1 = np.cosh((mu_s / T0) * (xt1 - x0))
     termo_2 = np.cosh((mu_s / T0) * (xt2 - x0))
+
     return yt1 - yt2 - (T0 / mu_s) * (termo_1 - termo_2)
+
+
 
 # -----------------------------------------------------------------------------
 # 9. Função para calcular uma catenária
 # -----------------------------------------------------------------------------
 def calcular_catenaria(xt1, yt1, xt2, yt2, T0, mu_s, dx=1.0):
+
     parametros = (xt1, xt2, yt1, yt2, T0, mu_s)
+
     x0 = fsolve(equacao_x0, [xt1], args=parametros)[0]
+
     y0 = yt1 - (T0 / mu_s) * (
-    np.cosh((mu_s / T0) * (xt1 - x0)) - 1
+        np.cosh((mu_s / T0) * (xt1 - x0)) - 1
     )
+
     x_real = np.arange(xt1, xt2 + dx, dx)
+
     y_real = (T0 / mu_s) * (
-    np.cosh((mu_s / T0) * (x_real - x0)) - 1
+        np.cosh((mu_s / T0) * (x_real - x0)) - 1
     ) + y0
+
     y_local = y_real - y0
     T = T0 + mu_s * y_local
-    return x_real, y_real, T, x0, y
 
+    return x_real, y_real, T, x0, y0
+
+# -----------------------------------------------------------------------------
+# 10. Cálculo das catenárias entre torres consecutivas
+# -----------------------------------------------------------------------------
+catenarias = []
+
+for i in range(len(torres) - 1):
+
+    xt1 = torres[i, 0]
+    yt1 = torres[i, 2]
+
+    xt2 = torres[i + 1, 0]
+    yt2 = torres[i + 1, 2]
+
+    T0 = T0_vaos[i]
+
+    x_cat, y_cat, T_cat, x0, y0 = calcular_catenaria(
+        xt1, yt1, xt2, yt2, T0, mu_s
+    )
+
+    catenarias.append({
+        "vao": i + 1,
+        "xt1": xt1,
+        "xt2": xt2,
+        "T0": T0,
+        "x": x_cat,
+        "y": y_cat,
+        "T": T_cat,
+        "x0": x0,
+        "y0": y0
+    })
+    
+# -----------------------------------------------------------------------------
+# 11. Gráfico com todas as catenárias
+# -----------------------------------------------------------------------------
+plt.figure(1)
+plt.plot(distancia, elevacao, "b", label="Terreno")
+plt.plot(distancia, y_min, "r", label="Altura mínima")
+
+for i in range(len(torres)):
+    x_torre = torres[i, 0]
+    y_base = torres[i, 1]
+    y_topo = torres[i, 2]
+
+    label = "Torres" if i == 0 else None
+    plt.plot([x_torre, x_torre], [y_base, y_topo], "k", label=label)
+
+for i, cat in enumerate(catenarias):
+    label = "Catenária" if i == 0 else None
+    plt.plot(cat["x"], cat["y"], "m", label=label)
+
+plt.xlabel("Distância [m]")
+plt.ylabel("Elevação [m]")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+
+
+# -----------------------------------------------------------------------------
+# 12. Gráfico da tração em todos os vãos
+# -----------------------------------------------------------------------------
+plt.figure(2)
+
+for i, cat in enumerate(catenarias):
+    label = "Tração no cabo" if i == 0 else None
+    plt.plot(cat["x"], cat["T"], "b", label=label)
+
+T_limite_global = Tmax * np.ones(len(distancia))
+plt.plot(distancia, T_limite_global, "r", label="Tração máxima admissível")
+
+plt.xlabel("Distância [m]")
+plt.ylabel("Tração [N]")
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
